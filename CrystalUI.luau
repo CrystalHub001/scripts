@@ -1,4 +1,4 @@
---// Crystal UI Library v2.0 | Wind Style & Resizable (Purple & Pink Edition)
+--// Crystal UI Library v3.0 | WindUI-like • Icons • Purple & Pink accents
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
@@ -8,29 +8,31 @@ local CoreGui = game:GetService("CoreGui")
 
 local CrystalUI = {}
 CrystalUI.__index = CrystalUI
-CrystalUI.Version = "2.0"
+CrystalUI.Version = "3.0"
 
 --==================================================================
--- Theme (เปลี่ยนสีได้สดผ่าน CrystalUI:SetTheme)
+-- Theme (พื้นผิวสีเทาเข้มแบบ WindUI, สี accent เปลี่ยนสดได้)
 --==================================================================
 local Theme = {
-    Bg = Color3.fromRGB(15, 11, 24),
-    Sidebar = Color3.fromRGB(20, 15, 32),
-    Card = Color3.fromRGB(27, 20, 44),
-    CardHover = Color3.fromRGB(36, 27, 58),
-    InputBg = Color3.fromRGB(18, 13, 29),
+    Bg = Color3.fromRGB(16, 16, 19),
+    Sidebar = Color3.fromRGB(16, 16, 19),
+    Card = Color3.fromRGB(26, 26, 30),
+    CardHover = Color3.fromRGB(35, 35, 40),
+    InputBg = Color3.fromRGB(19, 19, 22),
     Purple = Color3.fromRGB(168, 85, 247),
     Pink = Color3.fromRGB(236, 72, 153),
-    Text = Color3.fromRGB(248, 244, 255),
-    Muted = Color3.fromRGB(165, 148, 190),
-    Stroke = Color3.fromRGB(78, 46, 118),
+    Text = Color3.fromRGB(238, 238, 244),
+    Muted = Color3.fromRGB(135, 135, 148),
+    Stroke = Color3.fromRGB(44, 44, 52),
+    Danger = Color3.fromRGB(239, 68, 68),
 }
 CrystalUI.Theme = Theme
 
-local RootGui -- ประกาศก่อนเพื่อให้ฟังก์ชันด้านล่างใช้ได้
+local RootGui
 local ThemeHooks = {}
 local Connections = {}
-local Listening = 0 -- นับจำนวน Keybind ที่กำลังรอรับปุ่ม (กัน ToggleKey ทำงานซ้อน)
+local Listening = 0
+local WindowCount = 0
 
 local function Themed(inst, fn)
     fn()
@@ -47,7 +49,7 @@ local function ApplyTheme()
         if RootGui and h.inst:IsDescendantOf(RootGui) then
             pcall(h.fn)
         else
-            table.remove(ThemeHooks, i) -- ล้าง hook ของ instance ที่ถูกทำลายแล้ว
+            table.remove(ThemeHooks, i)
         end
     end
 end
@@ -120,7 +122,6 @@ local function Safe(cb, ...)
     if not ok then warn("[CrystalUI] callback error: " .. tostring(err)) end
 end
 
--- ตำแหน่งเมาส์/นิ้ว (ใช้ร่วมกับ IgnoreGuiInset = true)
 local function PointerPos(input)
     if input.UserInputType == Enum.UserInputType.Touch then
         return Vector2.new(input.Position.X, input.Position.Y)
@@ -136,7 +137,6 @@ local function IsMove(input)
     return input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch
 end
 
--- เรียงลำดับ element ตามลำดับการสร้างเสมอ
 local function AutoOrder(container)
     local n = 0
     container.ChildAdded:Connect(function(c)
@@ -160,7 +160,69 @@ local function GetGuiParent()
 end
 
 --==================================================================
--- Root GUI + Cleanup (รันซ้ำได้โดยไม่มี connection ค้าง)
+-- Icons (Footagesus/Icons v2, มี fallback ถ้าโหลดไม่ได้)
+--==================================================================
+local IconLib
+do
+    local ok, lib = pcall(function()
+        return loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua"))()
+    end)
+    if ok and type(lib) == "table" then
+        IconLib = lib
+        pcall(function() lib.SetIconsType("lucide") end)
+    end
+end
+
+local function ResolveIcon(name)
+    if not IconLib or type(name) ~= "string" or name == "" then return nil end
+    local ok, res = pcall(function() return IconLib.GetIcon(name) end)
+    if ok and res then return res end
+    return nil
+end
+
+local function IconProp(obj)
+    return obj:IsA("ImageLabel") and "ImageColor3" or "TextColor3"
+end
+
+-- สร้างไอคอน: ใช้รูปจาก lib ถ้าได้, ไม่งั้นใช้ตัวอักษร fallback / สัญลักษณ์ที่ส่งมา
+local function MakeIcon(parent, name, size, color, props, fallback)
+    size = size or 18
+    local res = ResolveIcon(name)
+    local obj
+    if res then
+        obj = New("ImageLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromOffset(size, size),
+            ImageColor3 = color or Theme.Text,
+            ScaleType = Enum.ScaleType.Fit,
+        }, parent)
+        if type(res) == "table" then
+            obj.Image = res.Image or res[1] or ""
+            if res.ImageRectSize then obj.ImageRectSize = res.ImageRectSize end
+            if res.ImageRectPosition then obj.ImageRectPosition = res.ImageRectPosition end
+        else
+            obj.Image = tostring(res)
+        end
+    else
+        local glyph = fallback
+        if not glyph and type(name) == "string" and name ~= "" and not name:match("^[%w%-:_]+$") then glyph = name end
+        if glyph then
+            obj = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Size = UDim2.fromOffset(size, size),
+                Text = glyph,
+                TextSize = math.max(10, size - 3),
+                Font = Enum.Font.GothamBold,
+                TextColor3 = color or Theme.Text,
+            }, parent)
+        end
+    end
+    if obj and props then for k, v in pairs(props) do obj[k] = v end end
+    return obj
+end
+
+--==================================================================
+-- Root GUI + Cleanup
 --==================================================================
 local Env = (getgenv and getgenv()) or _G
 if Env.__CrystalUI_Cleanup then pcall(Env.__CrystalUI_Cleanup) end
@@ -186,8 +248,10 @@ end
 Env.__CrystalUI_Cleanup = Cleanup
 function CrystalUI:Destroy() Cleanup() end
 
+local function Alive() return RootGui and RootGui.Parent ~= nil end
+
 --==================================================================
--- Draggable (เมาส์ + ทัช, กันลากหลุดจอ, บอกได้ว่าเป็น drag หรือ click)
+-- Draggable
 --==================================================================
 local function MakeDraggable(handle, target, canDrag)
     local dragging, moved = false, false
@@ -227,7 +291,7 @@ local function MakeDraggable(handle, target, canDrag)
 end
 
 --==================================================================
--- Config encode / decode (รองรับ Color3, ตาราง)
+-- Config encode / decode
 --==================================================================
 local function EncodeValue(v)
     if typeof(v) == "Color3" then
@@ -249,7 +313,7 @@ local function HasFS()
 end
 
 --==================================================================
--- Notifications (แก้บั๊ก: เดิม tween Position ไม่ได้เพราะ UIListLayout คุมอยู่)
+-- Notifications (การ์ดเป็น CanvasGroup เพื่อให้มุมโค้งตัดเนื้อหาข้างในจริง)
 --==================================================================
 local NotifHolder = New("Frame", {
     Name = "Notifications",
@@ -274,6 +338,7 @@ local NotifColors = {
 }
 
 function CrystalUI:Notify(opts)
+    if not Alive() then return end
     opts = opts or {}
     local title = opts.Title or "Crystal UI"
     local content = opts.Content or ""
@@ -283,7 +348,6 @@ function CrystalUI:Notify(opts)
     local textH = content == "" and 0 or TextService:GetTextSize(content, 12, Enum.Font.Gotham, Vector2.new(262, 1000)).Y
     local h = math.max(52, 34 + textH + 12)
 
-    -- จำกัดจำนวนแจ้งเตือนพร้อมกัน
     while #NotifSlots >= 5 do
         local oldest = table.remove(NotifSlots, 1)
         if oldest then oldest:Destroy() end
@@ -293,13 +357,12 @@ function CrystalUI:Notify(opts)
     local Slot = New("Frame", {Size = UDim2.new(1, 0, 0, h), BackgroundTransparency = 1, LayoutOrder = NotifSeq}, NotifHolder)
     table.insert(NotifSlots, Slot)
 
-    local Card = New("Frame", {
+    local Card = New("CanvasGroup", {
         Size = UDim2.new(1, 0, 1, 0),
         Position = UDim2.new(1, 330, 0, 0),
         BackgroundColor3 = Theme.Card,
-        ClipsDescendants = true,
     }, Slot)
-    Corner(Card, 10)
+    Corner(Card, 12)
     local st = Stroke(Card, kindColor or Theme.Pink, 1.1)
 
     local Accent1 = New("Frame", {Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = kindColor or Color3.new(1, 1, 1), BorderSizePixel = 0}, Card)
@@ -315,9 +378,9 @@ function CrystalUI:Notify(opts)
         AccentGradient(LifeBar, 0)
     end
 
-    Txt({Size = UDim2.new(1, -24, 0, 20), Position = UDim2.fromOffset(12, 8), Text = title, Font = Enum.Font.GothamBold, TextTruncate = Enum.TextTruncate.AtEnd}, Card)
+    Txt({Size = UDim2.new(1, -24, 0, 20), Position = UDim2.fromOffset(14, 8), Text = title, Font = Enum.Font.GothamBold, TextTruncate = Enum.TextTruncate.AtEnd}, Card)
     Txt({
-        Size = UDim2.new(1, -24, 1, -34), Position = UDim2.fromOffset(12, 28), Text = content,
+        Size = UDim2.new(1, -28, 1, -34), Position = UDim2.fromOffset(14, 28), Text = content,
         Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Theme.Muted, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
     }, Card)
 
@@ -347,9 +410,10 @@ function CrystalUI:Notify(opts)
 end
 
 --==================================================================
--- Dialog (ใช้ CanvasGroup ให้ fade ทั้งกล่อง, ปุ่มยืดตามขนาด)
+-- Dialog
 --==================================================================
 function CrystalUI:Dialog(opts)
+    if not Alive() then return end
     opts = opts or {}
     local content = opts.Content or ""
     local textH = content == "" and 0 or TextService:GetTextSize(content, 12, Enum.Font.Gotham, Vector2.new(300, 1000)).Y
@@ -357,7 +421,7 @@ function CrystalUI:Dialog(opts)
 
     local Overlay = New("Frame", {
         Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0),
-        BackgroundTransparency = 1, Active = true, ZIndex = 50,
+        BackgroundTransparency = 1, Active = true, ZIndex = 200,
     }, RootGui)
 
     local Box = New("CanvasGroup", {
@@ -366,18 +430,18 @@ function CrystalUI:Dialog(opts)
         Size = UDim2.fromOffset(boxW - 30, boxH - 15),
         BackgroundColor3 = Theme.Bg,
         GroupTransparency = 1,
-        ZIndex = 51,
+        ZIndex = 201,
     }, Overlay)
-    Corner(Box, 12)
+    Corner(Box, 14)
     AccentGradient(Stroke(Box, Theme.Pink, 1.2), 0)
 
-    Txt({Size = UDim2.new(1, -28, 0, 26), Position = UDim2.fromOffset(14, 12), Text = opts.Title or "Confirm", Font = Enum.Font.GothamBold, TextSize = 15}, Box)
+    Txt({Size = UDim2.new(1, -28, 0, 26), Position = UDim2.fromOffset(16, 14), Text = opts.Title or "Confirm", Font = Enum.Font.GothamBold, TextSize = 15}, Box)
     Txt({
-        Size = UDim2.new(1, -28, 0, textH + 2), Position = UDim2.fromOffset(14, 42), Text = content,
+        Size = UDim2.new(1, -32, 0, textH + 2), Position = UDim2.fromOffset(16, 44), Text = content,
         Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Theme.Muted, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
     }, Box)
 
-    local BtnRow = New("Frame", {Size = UDim2.new(1, -28, 0, 34), Position = UDim2.new(0, 14, 1, -48), BackgroundTransparency = 1}, Box)
+    local BtnRow = New("Frame", {Size = UDim2.new(1, -32, 0, 34), Position = UDim2.new(0, 16, 1, -50), BackgroundTransparency = 1}, Box)
     New("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, BtnRow)
 
     local closed = false
@@ -396,12 +460,12 @@ function CrystalUI:Dialog(opts)
     local function MakeBtn(text, primary, cb)
         local b = New("TextButton", {
             Size = hideCancel and UDim2.new(1, 0, 1, 0) or UDim2.new(0.5, -4, 1, 0),
-            BackgroundColor3 = primary and Color3.new(1, 1, 1) or Theme.Card,
+            BackgroundColor3 = primary and (opts.Danger and Theme.Danger or Color3.new(1, 1, 1)) or Theme.Card,
             Text = text, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Theme.Text,
-            AutoButtonColor = false, ZIndex = 52,
+            AutoButtonColor = false, ZIndex = 202,
         }, BtnRow)
-        Corner(b, 8)
-        if primary then AccentGradient(b, 0) end
+        Corner(b, 9)
+        if primary and not opts.Danger then AccentGradient(b, 0) end
         b.MouseButton1Click:Connect(function() Close(cb) end)
     end
 
@@ -421,11 +485,12 @@ function CrystalUI:CreateWindow(opts)
     local Setters = {}
     local Tabs = {}
     local MemoryConfigs = {}
+    local destroyed = false
+    WindowCount += 1
 
     local function SetFlag(flag, v) if flag then Win.Flags[flag] = v end end
     local function Register(flag, setter) if flag then Setters[flag] = setter end end
 
-    -- ขนาดเริ่มต้นไม่เกินหน้าจอ (รองรับมือถือ)
     local vp = RootGui.AbsoluteSize
     if vp.X < 100 or vp.Y < 100 then vp = Vector2.new(1280, 720) end
     local req = opts.Size or UDim2.fromOffset(580, 390)
@@ -443,103 +508,134 @@ function CrystalUI:CreateWindow(opts)
     local maximized = false
     local restoreSize, restorePos
 
-    local Main = New("Frame", {
+    -- Main เป็น CanvasGroup: มุมโค้งจะตัด Topbar/Sidebar ที่อยู่ข้างในให้โค้งตามจริง
+    local Main = New("CanvasGroup", {
         Name = "CrystalWindWindow",
         Size = UDim2.fromOffset(initW - 40, initH - 40),
         Position = UDim2.new(0.5, -(initW - 40) / 2, 0.5, -(initH - 40) / 2),
         BackgroundColor3 = Theme.Bg,
-        BackgroundTransparency = 1,
-        ClipsDescendants = true,
+        GroupTransparency = 1,
     }, RootGui)
-    Corner(Main, 12)
+    Corner(Main, 14)
     local mainStroke = Stroke(Main, Theme.Pink, 1.2)
-    mainStroke.Transparency = 1
     AccentGradient(mainStroke, 35)
 
-    Tween(Main, {Size = UDim2.fromOffset(initW, initH), Position = UDim2.new(0.5, -initW / 2, 0.5, -initH / 2), BackgroundTransparency = 0}, 0.3)
-    Tween(mainStroke, {Transparency = 0}, 0.25)
+    Tween(Main, {Size = UDim2.fromOffset(initW, initH), Position = UDim2.new(0.5, -initW / 2, 0.5, -initH / 2), GroupTransparency = 0}, 0.3)
 
     -- Topbar
-    local Topbar = New("Frame", {Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = Theme.Sidebar, BorderSizePixel = 0}, Main)
+    local Topbar = New("Frame", {Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = Theme.Sidebar, BorderSizePixel = 0}, Main)
     MakeDraggable(Topbar, Main, function() return not maximized end)
-    New("Frame", {Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = 0.4, BorderSizePixel = 0}, Topbar)
+    New("Frame", {Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), BackgroundColor3 = Theme.Stroke, BorderSizePixel = 0}, Topbar)
 
-    local Gem = New("Frame", {Size = UDim2.fromOffset(13, 13), Position = UDim2.new(0, 16, 0.5, -6), Rotation = 45, BackgroundColor3 = Color3.new(1, 1, 1)}, Topbar)
-    Corner(Gem, 3)
-    AccentGradient(Gem, 45)
+    local logo = MakeIcon(Topbar, opts.Icon or "gem", 24, Theme.Text, {Position = UDim2.fromOffset(14, 12)})
+    if not logo then
+        logo = New("Frame", {Size = UDim2.fromOffset(13, 13), Position = UDim2.fromOffset(18, 17), Rotation = 45, BackgroundColor3 = Color3.new(1, 1, 1)}, Topbar)
+        Corner(logo, 3)
+        AccentGradient(logo, 45)
+    elseif logo:IsA("ImageLabel") then
+        AccentGradient(logo, 45) -- ให้ไอคอนไล่สี
+        logo.ImageColor3 = Color3.new(1, 1, 1)
+    end
 
-    local TitleLbl = Txt({Size = UDim2.new(1, -210, 0, 18), Position = UDim2.fromOffset(38, 6), Text = opts.Title or "Crystal UI", Font = Enum.Font.GothamBold, TextSize = 14, TextTruncate = Enum.TextTruncate.AtEnd}, Topbar)
-    local SubLbl = Txt({Size = UDim2.new(1, -210, 0, 14), Position = UDim2.fromOffset(38, 24), Text = opts.SubTitle or "Wind Style • Purple & Pink", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Theme.Muted, TextTruncate = Enum.TextTruncate.AtEnd}, Topbar)
+    local TitleLbl = Txt({Size = UDim2.new(1, -240, 0, 18), Position = UDim2.fromOffset(48, 8), Text = opts.Title or "Crystal UI", Font = Enum.Font.GothamBold, TextSize = 14, TextTruncate = Enum.TextTruncate.AtEnd}, Topbar)
+    local SubLbl = Txt({Size = UDim2.new(1, -240, 0, 14), Position = UDim2.fromOffset(48, 26), Text = opts.SubTitle or "Wind Style • Purple & Pink", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Theme.Muted, TextTruncate = Enum.TextTruncate.AtEnd}, Topbar)
 
-    local Controls = New("Frame", {Size = UDim2.new(0, 150, 1, 0), Position = UDim2.new(1, -158, 0, 0), BackgroundTransparency = 1}, Topbar)
+    local Controls = New("Frame", {Size = UDim2.new(0, 190, 1, 0), Position = UDim2.new(1, -198, 0, 0), BackgroundTransparency = 1}, Topbar)
     New("UIListLayout", {
         FillDirection = Enum.FillDirection.Horizontal,
         HorizontalAlignment = Enum.HorizontalAlignment.Right,
         VerticalAlignment = Enum.VerticalAlignment.Center,
         SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 6),
+        Padding = UDim.new(0, 4),
     }, Controls)
 
     if opts.Tag then
         local TagFrame = New("Frame", {Size = UDim2.fromOffset(50, 22), BackgroundColor3 = Color3.new(1, 1, 1), LayoutOrder = 1}, Controls)
-        Corner(TagFrame, 6)
+        Corner(TagFrame, 7)
         AccentGradient(TagFrame, 0)
         Txt({Size = UDim2.fromScale(1, 1), Text = tostring(opts.Tag), Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Center}, TagFrame)
     end
 
-    local function CtrlButton(text, size, order)
+    -- ปุ่มควบคุม: - (พับ)  □ (ขยาย)  × (ลบ UI)
+    local function CtrlButton(order)
         local b = New("TextButton", {
-            Size = UDim2.fromOffset(26, 26), BackgroundColor3 = Theme.Card, Text = text,
-            Font = Enum.Font.GothamBold, TextSize = size, TextColor3 = Theme.Muted, AutoButtonColor = false, LayoutOrder = order,
+            Size = UDim2.fromOffset(30, 30), BackgroundColor3 = Theme.CardHover, BackgroundTransparency = 1,
+            Text = "", AutoButtonColor = false, LayoutOrder = order,
         }, Controls)
-        Corner(b, 6)
+        Corner(b, 8)
         return b
     end
-    local MaxBtn = CtrlButton("□", 13, 2)
-    local CloseBtn = CtrlButton("×", 16, 3)
+    local center = {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5)}
 
-    MaxBtn.MouseEnter:Connect(function() Tween(MaxBtn, {BackgroundColor3 = Theme.Purple, TextColor3 = Color3.new(1, 1, 1)}, 0.14) end)
-    MaxBtn.MouseLeave:Connect(function() Tween(MaxBtn, {BackgroundColor3 = Theme.Card, TextColor3 = Theme.Muted}, 0.14) end)
-    CloseBtn.MouseEnter:Connect(function() Tween(CloseBtn, {BackgroundColor3 = Theme.Pink, TextColor3 = Color3.new(1, 1, 1)}, 0.14) end)
-    CloseBtn.MouseLeave:Connect(function() Tween(CloseBtn, {BackgroundColor3 = Theme.Card, TextColor3 = Theme.Muted}, 0.14) end)
+    local MinBtn = CtrlButton(2)
+    local minIcon = MakeIcon(MinBtn, "minus", 16, Theme.Muted, center, "–")
+    local MaxBtn = CtrlButton(3)
+    local maxIcon = MakeIcon(MaxBtn, "maximize-2", 15, Theme.Muted, center, "□")
+    local restIcon = MakeIcon(MaxBtn, "minimize-2", 15, Theme.Muted, center, "❐")
+    restIcon.Visible = false
+    local CloseBtn = CtrlButton(4)
+    local closeIcon = MakeIcon(CloseBtn, "x", 16, Theme.Muted, center, "×")
 
-    -- ปุ่มลอยเปิด UI
-    local OpenBubble = New("TextButton", {
+    local function HoverBtn(b, icons, bg)
+        b.MouseEnter:Connect(function()
+            Tween(b, {BackgroundTransparency = 0, BackgroundColor3 = bg or Theme.CardHover}, 0.12)
+            for _, ic in ipairs(icons) do Tween(ic, {[IconProp(ic)] = Theme.Text}, 0.12) end
+        end)
+        b.MouseLeave:Connect(function()
+            Tween(b, {BackgroundTransparency = 1}, 0.12)
+            for _, ic in ipairs(icons) do Tween(ic, {[IconProp(ic)] = Theme.Muted}, 0.12) end
+        end)
+    end
+    HoverBtn(MinBtn, {minIcon})
+    HoverBtn(MaxBtn, {maxIcon, restIcon})
+    HoverBtn(CloseBtn, {closeIcon}, Theme.Danger)
+
+    --------------------------------------------------------------
+    -- ปุ่มลอย Toggle UI (แสดงตลอดเวลา กดเปิด/ปิดหน้าต่างได้)
+    --------------------------------------------------------------
+    local Toggler = New("TextButton", {
+        Name = "CrystalToggle",
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Size = UDim2.fromOffset(0, 0),
-        Position = UDim2.new(0, 42, 0.5, 0),
+        Size = UDim2.fromOffset(46, 46),
+        Position = UDim2.new(0, 40, 0.5, 0),
         BackgroundColor3 = Color3.new(1, 1, 1),
-        Text = "✦", Font = Enum.Font.GothamBold, TextSize = 19, TextColor3 = Color3.new(1, 1, 1),
-        Visible = false, AutoButtonColor = false,
+        Text = "", AutoButtonColor = false, ZIndex = 100,
     }, RootGui)
-    Corner(OpenBubble, 12)
-    AccentGradient(OpenBubble, 45)
-    local bubbleMoved = MakeDraggable(OpenBubble, OpenBubble)
+    Corner(Toggler, 14)
+    AccentGradient(Toggler, 45)
+    MakeIcon(Toggler, opts.ToggleIcon or opts.Icon or "gem", 22, Color3.new(1, 1, 1), {
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 101,
+    }, "✦")
+    local togglerMoved = MakeDraggable(Toggler, Toggler)
+
+    Toggler.MouseButton1Down:Connect(function() Tween(Toggler, {Size = UDim2.fromOffset(40, 40)}, 0.08) end)
+    Toggler.MouseButton1Up:Connect(function() Tween(Toggler, {Size = UDim2.fromOffset(46, 46)}, 0.14, Enum.EasingStyle.Back) end)
 
     local hidden, busy = false, false
+    local hintShown = false
 
     function Win:Hide()
-        if hidden or busy then return end
+        if hidden or busy or destroyed then return end
         hidden, busy = true, true
-        Tween(Main, {BackgroundTransparency = 1}, 0.18)
+        Tween(Main, {GroupTransparency = 1}, 0.18)
         task.delay(0.18, function()
+            if destroyed then return end
             Main.Visible = false
-            OpenBubble.Visible = true
-            Tween(OpenBubble, {Size = UDim2.fromOffset(44, 44)}, 0.26, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
             busy = false
         end)
+        if not hintShown then
+            hintShown = true
+            local key = opts.ToggleKey ~= false and ((opts.ToggleKey or Enum.KeyCode.RightShift).Name .. " หรือ") or ""
+            CrystalUI:Notify({Title = "UI ถูกพับแล้ว", Content = "กด " .. key .. "ปุ่มลอยเพื่อเปิดอีกครั้ง", Duration = 3})
+        end
     end
 
     function Win:Show()
-        if not hidden or busy then return end
+        if not hidden or busy or destroyed then return end
         hidden, busy = false, true
-        Tween(OpenBubble, {Size = UDim2.fromOffset(0, 0)}, 0.16)
-        task.delay(0.16, function()
-            OpenBubble.Visible = false
-            Main.Visible = true
-            Tween(Main, {BackgroundTransparency = 0}, 0.24)
-            busy = false
-        end)
+        Main.Visible = true
+        Tween(Main, {GroupTransparency = 0}, 0.22)
+        task.delay(0.22, function() busy = false end)
     end
 
     function Win:Toggle()
@@ -547,36 +643,53 @@ function CrystalUI:CreateWindow(opts)
     end
 
     function Win:Destroy()
-        Main:Destroy()
-        OpenBubble:Destroy()
+        if destroyed then return end
+        destroyed = true
+        WindowCount -= 1
+        Safe(opts.OnDestroy)
+        if Main then Main:Destroy() end
+        if Toggler then Toggler:Destroy() end
+        if WindowCount <= 0 then Cleanup() end
     end
 
     function Win:SetTitle(t) TitleLbl.Text = tostring(t) end
     function Win:SetSubTitle(t) SubLbl.Text = tostring(t) end
     function Win:Notify(o) CrystalUI:Notify(o) end
 
-    CloseBtn.MouseButton1Click:Connect(function() Win:Hide() end)
-    OpenBubble.MouseButton1Click:Connect(function()
-        if bubbleMoved() then return end -- ลากอยู่ ไม่ใช่การกด
-        Win:Show()
+    Toggler.MouseButton1Click:Connect(function()
+        if togglerMoved() then return end
+        Win:Toggle()
     end)
 
-    -- ปุ่มลัดเปิด/ปิด UI (ตั้ง ToggleKey = false เพื่อปิดฟีเจอร์นี้)
+    MinBtn.MouseButton1Click:Connect(function() Win:Hide() end)
+    CloseBtn.MouseButton1Click:Connect(function()
+        if opts.ConfirmClose == false then
+            Win:Destroy()
+        else
+            CrystalUI:Dialog({
+                Title = "ปิดและลบ UI?",
+                Content = "UI จะถูกลบออกทั้งหมด ต้องรันสคริปต์ใหม่ถึงจะเปิดได้อีก",
+                ConfirmText = "ลบ UI", CancelText = "ยกเลิก", Danger = true,
+                OnConfirm = function() Win:Destroy() end,
+            })
+        end
+    end)
+
     local toggleKey = opts.ToggleKey
     if toggleKey == nil then toggleKey = Enum.KeyCode.RightShift end
     if toggleKey then
         Connect(UserInputService.InputBegan, function(input, gpe)
-            if gpe or Listening > 0 then return end
+            if gpe or Listening > 0 or destroyed then return end
             if input.KeyCode == toggleKey then Win:Toggle() end
         end)
     end
 
     -- Resize grip
     local ResizeGrip = New("TextButton", {
-        Name = "ResizeGrip", Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, -20, 1, -20),
+        Name = "ResizeGrip", Size = UDim2.fromOffset(22, 22), Position = UDim2.new(1, -22, 1, -22),
         BackgroundTransparency = 1, Text = "◢", Font = Enum.Font.GothamBold, TextSize = 11, ZIndex = 20,
+        TextColor3 = Theme.Muted,
     }, Main)
-    Accent(ResizeGrip, "TextColor3", "Pink")
 
     local resizing = false
     local resizeStart, startSize
@@ -601,12 +714,12 @@ function CrystalUI:CreateWindow(opts)
     MaxBtn.MouseButton1Click:Connect(function()
         maximized = not maximized
         ResizeGrip.Visible = not maximized
+        maxIcon.Visible = not maximized
+        restIcon.Visible = maximized
         if maximized then
             restoreSize, restorePos = Main.Size, Main.Position
-            MaxBtn.Text = "❐"
             Tween(Main, {Size = UDim2.new(1, -32, 1, -32), Position = UDim2.fromOffset(16, 16)}, 0.26)
         else
-            MaxBtn.Text = "□"
             Tween(Main, {Size = restoreSize, Position = restorePos}, 0.26)
         end
     end)
@@ -619,18 +732,18 @@ function CrystalUI:CreateWindow(opts)
     end
 
     -- Sidebar
-    local SidebarWidth = opts.SidebarWidth or 148
+    local SidebarWidth = opts.SidebarWidth or 150
     local Sidebar = New("ScrollingFrame", {
-        Size = UDim2.new(0, SidebarWidth, 1, -44), Position = UDim2.fromOffset(0, 44),
+        Size = UDim2.new(0, SidebarWidth, 1, -48), Position = UDim2.fromOffset(0, 48),
         BackgroundColor3 = Theme.Sidebar, BorderSizePixel = 0, ScrollBarThickness = 0,
         AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
     }, Main)
-    New("Frame", {Size = UDim2.new(0, 1, 1, -44), Position = UDim2.fromOffset(SidebarWidth, 44), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = 0.4, BorderSizePixel = 0}, Main)
-    New("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center}, Sidebar)
+    New("Frame", {Size = UDim2.new(0, 1, 1, -48), Position = UDim2.fromOffset(SidebarWidth, 48), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = 0.5, BorderSizePixel = 0}, Main)
+    New("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center}, Sidebar)
     New("UIPadding", {PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8)}, Sidebar)
 
     local Container = New("Frame", {
-        Size = UDim2.new(1, -(SidebarWidth + 1), 1, -44), Position = UDim2.fromOffset(SidebarWidth + 1, 44),
+        Size = UDim2.new(1, -(SidebarWidth + 1), 1, -48), Position = UDim2.fromOffset(SidebarWidth + 1, 48),
         BackgroundTransparency = 1, ClipsDescendants = true,
     }, Main)
 
@@ -639,17 +752,16 @@ function CrystalUI:CreateWindow(opts)
     ------------------------------------------------------------------
     function Win:CreateTab(name, icon)
         local TabBtn = New("TextButton", {
-            Size = UDim2.new(1, 0, 0, 32), BackgroundColor3 = Theme.Card, BackgroundTransparency = 1,
-            Text = (icon and (icon .. "  ") or "") .. name, Font = Enum.Font.GothamSemibold, TextSize = 12,
-            TextColor3 = Theme.Muted, TextXAlignment = Enum.TextXAlignment.Left, AutoButtonColor = false,
-            LayoutOrder = #Tabs + 1,
+            Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Theme.Card, BackgroundTransparency = 1,
+            Text = "", AutoButtonColor = false, LayoutOrder = #Tabs + 1,
         }, Sidebar)
-        New("UIPadding", {PaddingLeft = UDim.new(0, 16)}, TabBtn)
-        Corner(TabBtn, 7)
+        Corner(TabBtn, 9)
 
-        local Marker = New("Frame", {Size = UDim2.fromOffset(3, 6), Position = UDim2.new(0, -10, 0.5, -3), BackgroundColor3 = Theme.Pink, BackgroundTransparency = 1}, TabBtn)
-        Corner(Marker, 2)
-        Accent(Marker, "BackgroundColor3", "Pink")
+        local tabIcon = icon and MakeIcon(TabBtn, icon, 18, Theme.Muted, {AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0)})
+        local TabLbl = Txt({
+            Size = UDim2.new(1, tabIcon and -42 or -24, 1, 0), Position = UDim2.fromOffset(tabIcon and 38 or 14, 0),
+            Text = name, Font = Enum.Font.GothamSemibold, TextSize = 12, TextColor3 = Theme.Muted, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, TabBtn)
 
         local Page = New("ScrollingFrame", {
             Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
@@ -657,10 +769,10 @@ function CrystalUI:CreateWindow(opts)
         }, Container)
         Accent(Page, "ScrollBarImageColor3", "Purple")
         New("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center}, Page)
-        New("UIPadding", {PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 16), PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14)}, Page)
+        New("UIPadding", {PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 18), PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14)}, Page)
         AutoOrder(Page)
 
-        local entry = {Btn = TabBtn, Marker = Marker, Page = Page, Selected = false}
+        local entry = {Btn = TabBtn, Label = TabLbl, Icon = tabIcon, Page = Page, Selected = false}
         table.insert(Tabs, entry)
 
         local Tab = {}
@@ -669,15 +781,17 @@ function CrystalUI:CreateWindow(opts)
             for _, t in ipairs(Tabs) do
                 t.Selected = false
                 t.Page.Visible = false
-                Tween(t.Btn, {BackgroundTransparency = 1, TextColor3 = Theme.Muted}, 0.16)
-                Tween(t.Marker, {BackgroundTransparency = 1, Size = UDim2.fromOffset(3, 6), Position = UDim2.new(0, -10, 0.5, -3)}, 0.16)
+                Tween(t.Btn, {BackgroundTransparency = 1}, 0.16)
+                Tween(t.Label, {TextColor3 = Theme.Muted}, 0.16)
+                if t.Icon then Tween(t.Icon, {[IconProp(t.Icon)] = Theme.Muted}, 0.16) end
             end
             entry.Selected = true
             Page.Position = UDim2.fromOffset(12, 0)
             Page.Visible = true
             Tween(Page, {Position = UDim2.new()}, 0.2)
-            Tween(TabBtn, {BackgroundTransparency = 0, TextColor3 = Theme.Text}, 0.16)
-            Tween(Marker, {BackgroundTransparency = 0, Size = UDim2.fromOffset(3, 18), Position = UDim2.new(0, -10, 0.5, -9)}, 0.2)
+            Tween(TabBtn, {BackgroundTransparency = 0}, 0.16)
+            Tween(TabLbl, {TextColor3 = Theme.Text}, 0.16)
+            if tabIcon then Tween(tabIcon, {[IconProp(tabIcon)] = Theme.Text}, 0.16) end
         end
         function Tab:Select() Select() end
 
@@ -689,6 +803,9 @@ function CrystalUI:CreateWindow(opts)
         --------------------------------------------------------------
         -- Element helpers
         --------------------------------------------------------------
+        local function HasDesc(d) return d ~= nil and d ~= "" end
+        local function RowH(desc, base) return HasDesc(desc) and 58 or (base or 42) end
+
         local function Card(h, isButton)
             local props = {Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = Theme.Card, BorderSizePixel = 0}
             local f
@@ -699,18 +816,32 @@ function CrystalUI:CreateWindow(opts)
             else
                 f = New("Frame", props, Page)
             end
-            Corner(f, 8)
-            return f, Stroke(f, Theme.Stroke, 1)
+            Corner(f, 10)
+            return f, Stroke(f, Theme.Stroke, 1, 0.35)
+        end
+
+        -- ชื่อ + คำอธิบายแบบ WindUI
+        local function Head(parent, name, desc, rightPad, hh, wScale)
+            local w = UDim2.new(wScale or 1, -(rightPad or 16), 0, 18)
+            if HasDesc(desc) then
+                Txt({Size = w, Position = UDim2.fromOffset(14, 11), Text = name, TextTruncate = Enum.TextTruncate.AtEnd}, parent)
+                Txt({
+                    Size = UDim2.new(wScale or 1, -(rightPad or 16), 0, 14), Position = UDim2.fromOffset(14, 30), Text = desc,
+                    Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Theme.Muted, TextTruncate = Enum.TextTruncate.AtEnd,
+                }, parent)
+            else
+                Txt({Size = UDim2.new(wScale or 1, -(rightPad or 16), 0, hh), Position = UDim2.fromOffset(14, 0), Text = name, TextTruncate = Enum.TextTruncate.AtEnd}, parent)
+            end
         end
 
         local function Hover(frame, st, color)
             frame.MouseEnter:Connect(function()
                 Tween(frame, {BackgroundColor3 = Theme.CardHover}, 0.14)
-                Tween(st, {Color = Theme[color or "Purple"]}, 0.14)
+                Tween(st, {Color = Theme[color or "Purple"], Transparency = 0}, 0.14)
             end)
             frame.MouseLeave:Connect(function()
                 Tween(frame, {BackgroundColor3 = Theme.Card}, 0.14)
-                Tween(st, {Color = Theme.Stroke}, 0.14)
+                Tween(st, {Color = Theme.Stroke, Transparency = 0.35}, 0.14)
             end)
         end
 
@@ -725,17 +856,16 @@ function CrystalUI:CreateWindow(opts)
         -- Elements
         --------------------------------------------------------------
         function Tab:CreateSection(text)
-            local lbl = Txt({Size = UDim2.new(1, 0, 0, 20), Text = string.upper(text), Font = Enum.Font.GothamBold, TextSize = 11}, Page)
-            Accent(lbl, "TextColor3", "Purple")
-            return Finish(lbl, {SetText = function(_, t) lbl.Text = string.upper(t) end})
+            local lbl = Txt({Size = UDim2.new(1, 0, 0, 24), Text = text, Font = Enum.Font.GothamBold, TextSize = 14}, Page)
+            return Finish(lbl, {SetText = function(_, t) lbl.Text = tostring(t) end})
         end
 
         function Tab:CreateParagraph(o)
             o = o or {}
             local f = New("Frame", {Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, BorderSizePixel = 0}, Page)
-            Corner(f, 8)
-            Stroke(f, Theme.Stroke, 1)
-            New("UIPadding", {PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 10), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10)}, f)
+            Corner(f, 10)
+            Stroke(f, Theme.Stroke, 1, 0.35)
+            New("UIPadding", {PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 12), PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14)}, f)
             New("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, f)
             local title = Txt({Size = UDim2.new(1, 0, 0, 18), Text = o.Title or "", Font = Enum.Font.GothamBold, LayoutOrder = 1}, f)
             local body = Txt({
@@ -762,44 +892,44 @@ function CrystalUI:CreateWindow(opts)
 
         function Tab:CreateButton(o)
             o = o or {}
-            local btn, st = Card(38, true)
-            local lbl = Txt({Size = UDim2.new(1, -40, 1, 0), Position = UDim2.fromOffset(12, 0), Text = o.Name or "Button"}, btn)
-            local arrow = Txt({Size = UDim2.new(0, 20, 1, 0), Position = UDim2.new(1, -28, 0, 0), Text = "›", Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = Theme.Muted, TextXAlignment = Enum.TextXAlignment.Center}, btn)
+            local hh = RowH(o.Desc)
+            local btn, st = Card(hh, true)
+            Head(btn, o.Name or "Button", o.Desc, 56, hh)
+            local ic = MakeIcon(btn, o.Icon or "mouse-pointer-click", 18, Theme.Muted, {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0)}, "›")
 
             local hovering = false
             btn.MouseEnter:Connect(function()
                 hovering = true
                 Tween(btn, {BackgroundColor3 = Theme.CardHover}, 0.14)
-                Tween(st, {Color = Theme.Pink}, 0.14)
-                Tween(arrow, {TextColor3 = Theme.Pink}, 0.14)
+                Tween(st, {Color = Theme.Pink, Transparency = 0}, 0.14)
+                Tween(ic, {[IconProp(ic)] = Theme.Pink}, 0.14)
             end)
             btn.MouseLeave:Connect(function()
                 hovering = false
                 Tween(btn, {BackgroundColor3 = Theme.Card}, 0.14)
-                Tween(st, {Color = Theme.Stroke}, 0.14)
-                Tween(arrow, {TextColor3 = Theme.Muted}, 0.14)
+                Tween(st, {Color = Theme.Stroke, Transparency = 0.35}, 0.14)
+                Tween(ic, {[IconProp(ic)] = Theme.Muted}, 0.14)
             end)
-            btn.MouseButton1Down:Connect(function() Tween(btn, {BackgroundColor3 = Theme.Card:Lerp(Theme.Purple, 0.3)}, 0.08) end)
+            btn.MouseButton1Down:Connect(function() Tween(btn, {BackgroundColor3 = Theme.Card:Lerp(Theme.Purple, 0.25)}, 0.08) end)
             btn.MouseButton1Up:Connect(function() Tween(btn, {BackgroundColor3 = hovering and Theme.CardHover or Theme.Card}, 0.12) end)
             btn.MouseButton1Click:Connect(function() Safe(o.Callback) end)
 
-            return Finish(btn, {
-                SetText = function(_, t) lbl.Text = tostring(t) end,
-                Fire = function() Safe(o.Callback) end,
-            })
+            return Finish(btn, {Fire = function() Safe(o.Callback) end})
         end
 
         function Tab:CreateToggle(o)
             o = o or {}
             local state = o.Default == true
-            local row, st = Card(38, true)
-            Txt({Size = UDim2.new(1, -68, 1, 0), Position = UDim2.fromOffset(12, 0), Text = o.Name or "Toggle"}, row)
-            local bg = New("Frame", {Size = UDim2.fromOffset(40, 20), Position = UDim2.new(1, -52, 0.5, -10), BackgroundColor3 = Theme.InputBg}, row)
-            Corner(bg, 10)
-            local knob = New("Frame", {Size = UDim2.fromOffset(14, 14), BackgroundColor3 = Color3.new(1, 1, 1)}, bg)
-            Corner(knob, 7)
+            local hh = RowH(o.Desc)
+            local row, st = Card(hh, true)
+            Head(row, o.Name or "Toggle", o.Desc, 84, hh)
+            local bg = New("Frame", {Size = UDim2.fromOffset(42, 22), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.InputBg}, row)
+            Corner(bg, 11)
+            local bgStroke = Stroke(bg, Theme.Stroke, 1, 0.2)
+            local knob = New("Frame", {Size = UDim2.fromOffset(16, 16), BackgroundColor3 = Color3.new(1, 1, 1)}, bg)
+            Corner(knob, 8)
 
-            local function KnobPos() return state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7) end
+            local function KnobPos() return state and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8) end
             Themed(bg, function() bg.BackgroundColor3 = state and Theme.Pink or Theme.InputBg end)
             knob.Position = KnobPos()
 
@@ -808,6 +938,7 @@ function CrystalUI:CreateWindow(opts)
                 state = v and true or false
                 SetFlag(o.Flag, state)
                 Tween(bg, {BackgroundColor3 = state and Theme.Pink or Theme.InputBg}, 0.2)
+                Tween(bgStroke, {Transparency = state and 1 or 0.2}, 0.2)
                 Tween(knob, {Position = KnobPos()}, 0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
                 if fire ~= false then Safe(o.Callback, state) end
             end
@@ -838,28 +969,35 @@ function CrystalUI:CreateWindow(opts)
             end
             local val = Snap(o.Default or minV)
 
-            local frame, st = Card(52)
-            Txt({Size = UDim2.new(0.7, -12, 0, 22), Position = UDim2.fromOffset(12, 5), Text = o.Name or "Slider"}, frame)
-            local valLbl = Txt({Size = UDim2.new(0.3, -12, 0, 22), Position = UDim2.new(0.7, 0, 0, 5), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Right}, frame)
-            Accent(valLbl, "TextColor3", "Pink")
+            local hh = RowH(o.Desc, 46)
+            local frame, st = Card(hh)
+            Head(frame, o.Name or "Slider", o.Desc, 12, hh, 0.38)
 
-            local barBg = New("Frame", {Size = UDim2.new(1, -24, 0, 6), Position = UDim2.fromOffset(12, 36), BackgroundColor3 = Theme.InputBg}, frame)
+            local barBg = New("Frame", {Size = UDim2.new(0.62, -92, 0, 6), Position = UDim2.new(0.38, 0, 0.5, -3), BackgroundColor3 = Theme.InputBg}, frame)
             Corner(barBg, 3)
             local barFill = New("Frame", {Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1)}, barBg)
             Corner(barFill, 3)
             AccentGradient(barFill, 0)
-            local knob = New("Frame", {Size = UDim2.fromOffset(12, 12), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 2}, barBg)
-            Corner(knob, 6)
+            local knob = New("Frame", {Size = UDim2.fromOffset(14, 14), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 2}, barBg)
+            Corner(knob, 7)
+
+            local valBox = New("TextBox", {
+                Size = UDim2.fromOffset(60, 26), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0),
+                BackgroundColor3 = Theme.InputBg, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Theme.Text,
+                ClearTextOnFocus = false, Text = "",
+            }, frame)
+            Corner(valBox, 7)
+            Stroke(valBox, Theme.Stroke, 1, 0.2)
 
             local function Visual(animate)
                 local ratio = (val - minV) / (maxV - minV)
-                valLbl.Text = string.format("%." .. dec .. "f", val) .. suffix
+                valBox.Text = string.format("%." .. dec .. "f", val) .. suffix
                 if animate then
                     Tween(barFill, {Size = UDim2.new(ratio, 0, 1, 0)}, 0.08)
-                    Tween(knob, {Position = UDim2.new(ratio, -6, 0.5, -6)}, 0.08)
+                    Tween(knob, {Position = UDim2.new(ratio, -7, 0.5, -7)}, 0.08)
                 else
                     barFill.Size = UDim2.new(ratio, 0, 1, 0)
-                    knob.Position = UDim2.new(ratio, -6, 0.5, -6)
+                    knob.Position = UDim2.new(ratio, -7, 0.5, -7)
                 end
             end
             Visual(false)
@@ -876,8 +1014,12 @@ function CrystalUI:CreateWindow(opts)
             function obj:Get() return val end
             Register(o.Flag, function(v) Set(v, true) end)
 
-            -- hitbox ใหญ่ขึ้นสำหรับนิ้วมือ
-            local hit = New("TextButton", {Size = UDim2.new(1, -16, 0, 26), Position = UDim2.fromOffset(8, 26), BackgroundTransparency = 1, Text = ""}, frame)
+            valBox.FocusLost:Connect(function()
+                local n = tonumber(valBox.Text:match("-?%d+%.?%d*"))
+                if n then Set(n, true) else Visual(false) end
+            end)
+
+            local hit = New("TextButton", {Size = UDim2.new(0.62, -80, 0, 30), Position = UDim2.new(0.38, -6, 0.5, -15), BackgroundTransparency = 1, Text = ""}, frame)
             local dragging = false
             local function Update(input)
                 local p = PointerPos(input)
@@ -889,7 +1031,7 @@ function CrystalUI:CreateWindow(opts)
                 if IsPress(input) then
                     dragging = true
                     Page.ScrollingEnabled = false
-                    Tween(st, {Color = Theme.Pink}, 0.12)
+                    Tween(st, {Color = Theme.Pink, Transparency = 0}, 0.12)
                     Update(input)
                 end
             end)
@@ -897,7 +1039,7 @@ function CrystalUI:CreateWindow(opts)
                 if IsPress(input) and dragging then
                     dragging = false
                     Page.ScrollingEnabled = true
-                    Tween(st, {Color = Theme.Stroke}, 0.14)
+                    Tween(st, {Color = Theme.Stroke, Transparency = 0.35}, 0.14)
                 end
             end)
             Connect(UserInputService.InputChanged, function(input)
@@ -908,16 +1050,19 @@ function CrystalUI:CreateWindow(opts)
 
         function Tab:CreateInput(o)
             o = o or {}
-            local frame, fStroke = Card(40)
-            Txt({Size = UDim2.new(0.45, -12, 1, 0), Position = UDim2.fromOffset(12, 0), Text = o.Name or "Input"}, frame)
+            local hh = RowH(o.Desc)
+            local frame, fStroke = Card(hh)
+            Head(frame, o.Name or "Input", o.Desc, 12, hh, 0.5)
             local box = New("TextBox", {
-                Size = UDim2.new(0.55, -12, 0, 26), Position = UDim2.new(0.45, 0, 0.5, -13), BackgroundColor3 = Theme.InputBg,
-                Text = tostring(o.Default or ""), PlaceholderText = o.Placeholder or "Type here...", Font = Enum.Font.Gotham,
-                TextSize = 12, TextColor3 = Theme.Text, PlaceholderColor3 = Theme.Muted, ClearTextOnFocus = false,
-                TextTruncate = Enum.TextTruncate.AtEnd,
+                Size = UDim2.new(0.5, -28, 0, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0),
+                BackgroundColor3 = Theme.InputBg, Text = tostring(o.Default or ""), PlaceholderText = o.Placeholder or "Enter value",
+                Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Theme.Text, PlaceholderColor3 = Theme.Muted,
+                ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
             }, frame)
-            Corner(box, 6)
-            local bStroke = Stroke(box, Theme.Purple, 1)
+            New("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 30)}, box)
+            Corner(box, 8)
+            local bStroke = Stroke(box, Theme.Stroke, 1, 0.1)
+            MakeIcon(box, o.Icon or "pencil", 14, Theme.Muted, {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 24, 0.5, 0)})
             SetFlag(o.Flag, box.Text)
 
             local obj = {}
@@ -937,10 +1082,9 @@ function CrystalUI:CreateWindow(opts)
                 SetFlag(o.Flag, box.Text)
                 if o.RealTime then Safe(o.Callback, box.Text, false) end
             end)
-            box.Focused:Connect(function() Tween(bStroke, {Color = Theme.Pink}, 0.16) Tween(fStroke, {Color = Theme.Purple}, 0.16) end)
+            box.Focused:Connect(function() Tween(bStroke, {Color = Theme.Pink, Transparency = 0}, 0.16) end)
             box.FocusLost:Connect(function(enterPressed)
-                Tween(bStroke, {Color = Theme.Purple}, 0.16)
-                Tween(fStroke, {Color = Theme.Stroke}, 0.16)
+                Tween(bStroke, {Color = Theme.Stroke, Transparency = 0.1}, 0.16)
                 if not o.RealTime then Safe(o.Callback, box.Text, enterPressed) end
             end)
             return Finish(frame, obj)
@@ -953,19 +1097,27 @@ function CrystalUI:CreateWindow(opts)
             local chosen = {}
             local open = false
             local MAXLIST = 150
+            local hh = RowH(o.Desc)
 
-            local wrap, st = Card(40)
+            local wrap, st = Card(hh)
             wrap.ClipsDescendants = true
-            local header = New("TextButton", {Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, Text = "", AutoButtonColor = false}, wrap)
-            Txt({Size = UDim2.new(0.5, -12, 1, 0), Position = UDim2.fromOffset(12, 0), Text = o.Name or "Dropdown"}, header)
-            local cur = Txt({
-                Size = UDim2.new(0.5, -24, 1, 0), Position = UDim2.new(0.5, 0, 0, 0), Font = Enum.Font.GothamBold, TextSize = 12,
-                TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd,
+            local header = New("TextButton", {Size = UDim2.new(1, 0, 0, hh), BackgroundTransparency = 1, Text = "", AutoButtonColor = false}, wrap)
+            Head(header, o.Name or "Dropdown", o.Desc, 12, hh, 0.45)
+
+            local pill = New("Frame", {
+                Size = UDim2.new(0.55, -28, 0, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0),
+                BackgroundColor3 = Theme.InputBg,
             }, header)
-            Accent(cur, "TextColor3", "Pink")
+            Corner(pill, 8)
+            Stroke(pill, Theme.Stroke, 1, 0.1)
+            local chev = MakeIcon(pill, "chevron-down", 14, Theme.Muted, {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0)})
+            local cur = Txt({
+                Size = UDim2.new(1, chev and -34 or -14, 1, 0), Position = UDim2.fromOffset(10, 0), Font = Enum.Font.GothamMedium, TextSize = 12,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            }, pill)
 
             local list = New("ScrollingFrame", {
-                Position = UDim2.fromOffset(8, 44), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2,
+                Position = UDim2.fromOffset(8, hh + 4), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2,
                 AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
             }, wrap)
             Accent(list, "ScrollBarImageColor3", "Purple")
@@ -996,15 +1148,15 @@ function CrystalUI:CreateWindow(opts)
                         b.TextColor3 = on and Theme.Pink or Theme.Text
                     end
                 end
-                local txt = #names == 0 and "Select" or (multi and (#names > 2 and (#names .. " selected") or table.concat(names, ", ")) or names[1])
-                cur.Text = txt .. " ▾"
+                cur.Text = #names == 0 and "Select" or (multi and (#names > 2 and (#names .. " selected") or table.concat(names, ", ")) or names[1])
             end
 
             local function Layout()
                 local lh = math.min(#options * 30, MAXLIST)
                 list.Size = UDim2.new(1, -16, 0, lh)
-                Tween(wrap, {Size = UDim2.new(1, 0, 0, open and (52 + lh) or 40)}, 0.22)
-                Tween(st, {Color = open and Theme.Pink or Theme.Stroke}, 0.18)
+                Tween(wrap, {Size = UDim2.new(1, 0, 0, open and (hh + 12 + lh) or hh)}, 0.22)
+                Tween(st, {Color = open and Theme.Pink or Theme.Stroke, Transparency = open and 0 or 0.35}, 0.18)
+                if chev then Tween(chev, {Rotation = open and 180 or 0}, 0.2) end
             end
 
             local function Pick(item)
@@ -1028,7 +1180,7 @@ function CrystalUI:CreateWindow(opts)
                         Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = Theme.InputBg, Text = tostring(item),
                         Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Theme.Text, AutoButtonColor = false,
                     }, list)
-                    Corner(b, 6)
+                    Corner(b, 7)
                     buttons[item] = b
                     b.MouseEnter:Connect(function() Tween(b, {BackgroundColor3 = Theme.Purple}, 0.12) end)
                     b.MouseLeave:Connect(function() Tween(b, {BackgroundColor3 = chosen[item] and Theme.CardHover or Theme.InputBg}, 0.12) end)
@@ -1080,16 +1232,17 @@ function CrystalUI:CreateWindow(opts)
             o = o or {}
             local key = o.Default or Enum.KeyCode.F
             local listening = false
+            local hh = RowH(o.Desc)
 
-            local frame, st = Card(38)
-            Txt({Size = UDim2.new(1, -110, 1, 0), Position = UDim2.fromOffset(12, 0), Text = o.Name or "Keybind"}, frame)
+            local frame, st = Card(hh)
+            Head(frame, o.Name or "Keybind", o.Desc, 112, hh)
             local bindBtn = New("TextButton", {
-                Size = UDim2.fromOffset(86, 26), Position = UDim2.new(1, -98, 0.5, -13), BackgroundColor3 = Theme.InputBg,
-                Text = key.Name, Font = Enum.Font.GothamBold, TextSize = 11, AutoButtonColor = false,
+                Size = UDim2.fromOffset(86, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0),
+                BackgroundColor3 = Theme.InputBg, Text = key.Name, Font = Enum.Font.GothamBold, TextSize = 11, AutoButtonColor = false,
             }, frame)
             Accent(bindBtn, "TextColor3", "Pink")
-            Corner(bindBtn, 6)
-            Stroke(bindBtn, Theme.Purple, 1)
+            Corner(bindBtn, 8)
+            Stroke(bindBtn, Theme.Stroke, 1, 0.1)
             SetFlag(o.Flag, key.Name)
 
             local obj = {}
@@ -1124,15 +1277,14 @@ function CrystalUI:CreateWindow(opts)
             Connect(UserInputService.InputBegan, function(input, gpe)
                 if listening and input.UserInputType == Enum.UserInputType.Keyboard then
                     if input.KeyCode == Enum.KeyCode.Escape then
-                        bindBtn.Text = key.Name -- ยกเลิกการตั้งปุ่ม
+                        bindBtn.Text = key.Name
                     else
                         SetKey(input.KeyCode, true)
                     end
-                    -- ปล่อยสถานะ listening หลังเฟรมนี้ เพื่อไม่ให้ปุ่มที่เพิ่งตั้งไปทริกเกอร์ callback
                     task.defer(StopListening)
                 elseif not listening and not gpe and input.KeyCode == key then
-                    Tween(st, {Color = Theme.Pink}, 0.1)
-                    task.delay(0.12, function() Tween(st, {Color = Theme.Stroke}, 0.18) end)
+                    Tween(st, {Color = Theme.Pink, Transparency = 0}, 0.1)
+                    task.delay(0.12, function() Tween(st, {Color = Theme.Stroke, Transparency = 0.35}, 0.18) end)
                     Safe(o.Callback, key)
                 end
             end)
@@ -1148,30 +1300,34 @@ function CrystalUI:CreateWindow(opts)
             local color = o.Default or Theme.Purple
             local h, s, v = color:ToHSV()
             local open = false
+            local hh = RowH(o.Desc)
 
-            local wrap, st = Card(40)
+            local svY = hh + 10
+            local hueY = svY + 120
+            local presetY = hueY + 24
+            local fullH = presetY + 32
+
+            local wrap, st = Card(hh)
             wrap.ClipsDescendants = true
-            local header = New("TextButton", {Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, Text = "", AutoButtonColor = false}, wrap)
-            Txt({Size = UDim2.new(0.6, -12, 1, 0), Position = UDim2.fromOffset(12, 0), Text = o.Name or "Color"}, header)
-            local swatch = New("Frame", {Size = UDim2.fromOffset(34, 18), Position = UDim2.new(1, -46, 0.5, -9), BackgroundColor3 = color}, header)
-            Corner(swatch, 5)
-            Stroke(swatch, Theme.Text, 1, 0.5)
+            local header = New("TextButton", {Size = UDim2.new(1, 0, 0, hh), BackgroundTransparency = 1, Text = "", AutoButtonColor = false}, wrap)
+            Head(header, o.Name or "Color", o.Desc, 70, hh)
+            local swatch = New("Frame", {Size = UDim2.fromOffset(36, 20), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = color}, header)
+            Corner(swatch, 6)
+            Stroke(swatch, Theme.Text, 1, 0.6)
 
-            -- กล่อง Saturation/Value
-            local svBox = New("Frame", {Size = UDim2.new(1, -24, 0, 110), Position = UDim2.fromOffset(12, 50), BackgroundColor3 = Color3.fromHSV(h, 1, 1), BorderSizePixel = 0}, wrap)
-            Corner(svBox, 6)
+            local svBox = New("Frame", {Size = UDim2.new(1, -28, 0, 110), Position = UDim2.fromOffset(14, svY), BackgroundColor3 = Color3.fromHSV(h, 1, 1), BorderSizePixel = 0}, wrap)
+            Corner(svBox, 8)
             local white = New("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, svBox)
-            Corner(white, 6)
+            Corner(white, 8)
             New("UIGradient", {Transparency = NumberSequence.new(0, 1)}, white)
             local black = New("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0}, svBox)
-            Corner(black, 6)
+            Corner(black, 8)
             New("UIGradient", {Rotation = 90, Transparency = NumberSequence.new(1, 0)}, black)
             local svCursor = New("Frame", {Size = UDim2.fromOffset(12, 12), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, ZIndex = 3}, svBox)
             Corner(svCursor, 6)
             Stroke(svCursor, Color3.new(1, 1, 1), 2)
 
-            -- แถบ Hue
-            local hueBar = New("Frame", {Size = UDim2.new(1, -24, 0, 14), Position = UDim2.fromOffset(12, 170), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, wrap)
+            local hueBar = New("Frame", {Size = UDim2.new(1, -28, 0, 14), Position = UDim2.fromOffset(14, hueY), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, wrap)
             Corner(hueBar, 7)
             local keys = {}
             for i = 0, 6 do keys[#keys + 1] = ColorSequenceKeypoint.new(i / 6, Color3.fromHSV(i == 6 and 0 or i / 6, 1, 1)) end
@@ -1180,8 +1336,7 @@ function CrystalUI:CreateWindow(opts)
             Corner(hueCursor, 2)
             Stroke(hueCursor, Color3.new(0, 0, 0), 1, 0.4)
 
-            -- Presets
-            local presetRow = New("Frame", {Size = UDim2.new(1, -24, 0, 20), Position = UDim2.fromOffset(12, 194), BackgroundTransparency = 1}, wrap)
+            local presetRow = New("Frame", {Size = UDim2.new(1, -28, 0, 22), Position = UDim2.fromOffset(14, presetY), BackgroundTransparency = 1}, wrap)
             New("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), VerticalAlignment = Enum.VerticalAlignment.Center}, presetRow)
 
             local obj = {}
@@ -1206,7 +1361,7 @@ function CrystalUI:CreateWindow(opts)
             for _, col in ipairs(presets) do
                 local sw = New("TextButton", {Size = UDim2.fromOffset(18, 18), BackgroundColor3 = col, Text = "", AutoButtonColor = false}, presetRow)
                 Corner(sw, 9)
-                Stroke(sw, Theme.Text, 1)
+                Stroke(sw, Theme.Text, 1, 0.5)
                 sw.MouseEnter:Connect(function() Tween(sw, {Size = UDim2.fromOffset(22, 22)}, 0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out) end)
                 sw.MouseLeave:Connect(function() Tween(sw, {Size = UDim2.fromOffset(18, 18)}, 0.14) end)
                 sw.MouseButton1Click:Connect(function() obj:Set(col, true) end)
@@ -1244,8 +1399,8 @@ function CrystalUI:CreateWindow(opts)
 
             header.MouseButton1Click:Connect(function()
                 open = not open
-                Tween(wrap, {Size = UDim2.new(1, 0, 0, open and 226 or 40)}, 0.22)
-                Tween(st, {Color = open and Theme.Pink or Theme.Stroke}, 0.18)
+                Tween(wrap, {Size = UDim2.new(1, 0, 0, open and fullH or hh)}, 0.22)
+                Tween(st, {Color = open and Theme.Pink or Theme.Stroke, Transparency = open and 0 or 0.35}, 0.18)
             end)
             return Finish(wrap, obj)
         end
@@ -1254,18 +1409,17 @@ function CrystalUI:CreateWindow(opts)
             o = o or {}
             local pct = math.clamp(o.Default or 0, 0, 100)
 
-            local frame = Card(48)
-            Txt({Size = UDim2.new(0.7, -12, 0, 20), Position = UDim2.fromOffset(12, 4), Text = o.Name or "Progress", TextSize = 12}, frame)
-            local pLbl = Txt({Size = UDim2.new(0.3, -12, 0, 20), Position = UDim2.new(0.7, 0, 0, 4), Text = math.floor(pct + 0.5) .. "%", Font = Enum.Font.GothamBold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Right}, frame)
+            local frame = Card(52)
+            Txt({Size = UDim2.new(0.7, -12, 0, 20), Position = UDim2.fromOffset(14, 6), Text = o.Name or "Progress", TextSize = 12}, frame)
+            local pLbl = Txt({Size = UDim2.new(0.3, -14, 0, 20), Position = UDim2.new(0.7, 0, 0, 6), Text = math.floor(pct + 0.5) .. "%", Font = Enum.Font.GothamBold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Right}, frame)
             Accent(pLbl, "TextColor3", "Pink")
 
-            local bg = New("Frame", {Size = UDim2.new(1, -24, 0, 8), Position = UDim2.fromOffset(12, 30), BackgroundColor3 = Theme.InputBg}, frame)
+            local bg = New("Frame", {Size = UDim2.new(1, -28, 0, 8), Position = UDim2.fromOffset(14, 33), BackgroundColor3 = Theme.InputBg}, frame)
             Corner(bg, 4)
             local fill = New("Frame", {Size = UDim2.new(pct / 100, 0, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1)}, bg)
             Corner(fill, 4)
             AccentGradient(fill, 0)
 
-            -- แก้บั๊ก: เดิม NumberValue ไม่มี Parent ทำให้ Tween() ข้ามไปเสมอ ตัวเลข % เลยไม่เคยวิ่ง
             local numVal = New("NumberValue", {Value = pct}, frame)
             numVal.Changed:Connect(function(x) pLbl.Text = math.floor(x + 0.5) .. "%" end)
 
@@ -1284,7 +1438,7 @@ function CrystalUI:CreateWindow(opts)
     end
 
     --==================================================================
-    -- Config system (บันทึกลงไฟล์จริงถ้า executor รองรับ, ไม่งั้นเก็บในหน่วยความจำ)
+    -- Config system
     --==================================================================
     local folderName = tostring(opts.ConfigFolder or opts.Title or "Default"):gsub("[^%w_%- ]", "")
     local ConfigDir = "CrystalUI/" .. folderName
@@ -1370,12 +1524,12 @@ function CrystalUI:CreateWindow(opts)
     end
 
     function Win:AddConfigsTab(name)
-        local tab = Win:CreateTab(name or "Configs", "⚙")
+        local tab = Win:CreateTab(name or "Configs", "settings")
         tab:CreateSection("Config Manager")
         if not HasFS() then
             tab:CreateParagraph({Title = "Memory mode", Content = "Executor นี้ไม่รองรับระบบไฟล์ — config จะอยู่ในหน่วยความจำจนกว่าจะปิดเกม"})
         end
-        local nameInput = tab:CreateInput({Name = "Config name", Default = "default", Placeholder = "my_config"})
+        local nameInput = tab:CreateInput({Name = "Config name", Desc = "ตั้งชื่อไฟล์ที่จะบันทึก/โหลด", Default = "default", Placeholder = "my_config"})
         local dd = tab:CreateDropdown({
             Name = "Saved configs",
             Options = Win:ListConfigs(),
@@ -1383,20 +1537,20 @@ function CrystalUI:CreateWindow(opts)
         })
         local function Refresh() dd:Refresh(Win:ListConfigs()) end
 
-        tab:CreateButton({Name = "Save Config", Callback = function()
+        tab:CreateButton({Name = "Save Config", Icon = "save", Callback = function()
             local ok, err = Win:SaveConfig(nameInput:Get())
             Refresh()
             CrystalUI:Notify({Title = ok and "Config Saved" or "Save Failed", Content = ok and ("Saved '" .. nameInput:Get() .. "'") or tostring(err), Type = ok and "success" or "error", Duration = 2.5})
         end})
-        tab:CreateButton({Name = "Load Config", Callback = function()
+        tab:CreateButton({Name = "Load Config", Icon = "download", Callback = function()
             local ok, err = Win:LoadConfig(nameInput:Get())
             CrystalUI:Notify({Title = ok and "Config Loaded" or "Load Failed", Content = ok and "Applied saved settings." or tostring(err), Type = ok and "success" or "error", Duration = 2.5})
         end})
-        tab:CreateButton({Name = "Delete Config", Callback = function()
+        tab:CreateButton({Name = "Delete Config", Icon = "trash-2", Callback = function()
             CrystalUI:Dialog({
                 Title = "Delete config?",
                 Content = "ต้องการลบ '" .. tostring(nameInput:Get()) .. "' ใช่หรือไม่",
-                ConfirmText = "Delete",
+                ConfirmText = "Delete", Danger = true,
                 OnConfirm = function()
                     Win:DeleteConfig(nameInput:Get())
                     Refresh()
@@ -1404,20 +1558,21 @@ function CrystalUI:CreateWindow(opts)
                 end,
             })
         end})
-        tab:CreateButton({Name = "Refresh List", Callback = Refresh})
+        tab:CreateButton({Name = "Refresh List", Icon = "refresh-cw", Callback = Refresh})
         return tab
     end
 
     function Win:AddThemesTab(name)
-        local tab = Win:CreateTab(name or "Themes", "✦")
-        tab:CreateSection("Purple & Pink Palettes")
+        local tab = Win:CreateTab(name or "Themes", "palette")
+        tab:CreateSection("Accent Palettes")
         local palettes = {
             {Name = "Neon Purple & Pink", P = Color3.fromRGB(168, 85, 247), K = Color3.fromRGB(236, 72, 153)},
             {Name = "Pastel Sakura & Lavender", P = Color3.fromRGB(192, 132, 252), K = Color3.fromRGB(244, 114, 182)},
             {Name = "Deep Amethyst & Rose", P = Color3.fromRGB(126, 34, 206), K = Color3.fromRGB(219, 39, 119)},
+            {Name = "Ocean Blue & Cyan", P = Color3.fromRGB(59, 130, 246), K = Color3.fromRGB(34, 211, 238)},
         }
         for _, pal in ipairs(palettes) do
-            tab:CreateButton({Name = pal.Name, Callback = function()
+            tab:CreateButton({Name = pal.Name, Icon = "paintbrush", Callback = function()
                 CrystalUI:SetTheme({Purple = pal.P, Pink = pal.K})
                 CrystalUI:Notify({Title = "Theme Updated", Content = "Applied " .. pal.Name, Duration = 2.5})
             end})
