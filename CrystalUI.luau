@@ -40,11 +40,11 @@ local Presets = {
         Text = Color3.fromRGB(244, 244, 250), Muted = Color3.fromRGB(150, 150, 170), Stroke = Color3.fromRGB(52, 52, 72),
     },
 }
-CrystalUI.ThemeNames = {"Dark", "Dark Blue", "Purple", "Rainbow"}
+CrystalUI.ThemeNames = {"Purple", "Dark", "Dark Blue", "Rainbow"}
 CrystalUI.CurrentTheme = "Purple" -- ค่าเริ่มต้น
 
 local Theme = {Danger = Color3.fromRGB(239, 68, 68)}
-for k, v in pairs(Presets.Crystal) do Theme[k] = v end
+for k, v in pairs(Presets.Purple) do Theme[k] = v end
 CrystalUI.Theme = Theme
 
 local RootGui
