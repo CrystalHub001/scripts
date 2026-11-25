@@ -110,7 +110,7 @@ local Win = CrystalUI:CreateWindow({
 	Icon = "129839496275500",
 	ToggleIcon = 129839496275500,
 	Tag = "V1",
-	Size = UDim2.fromOffset(640, 420),
+	Size = UDim2.fromOffset(540, 320),
 	Columns = 2,
 	ConfigFolder = "CrystalHub",
 })
