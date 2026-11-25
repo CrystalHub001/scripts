@@ -3,6 +3,8 @@ repeat
 until game:IsLoaded()
 
 local placeid = game.PlaceId
+local gameid = game.GameId
+
 local ars = placeid == 286090429
 
 if ars then
