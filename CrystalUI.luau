@@ -15,11 +15,11 @@ CrystalUI.Version = "3.1"
 -- Theme (สเลทเข้มแบบ Maru Hub, Purple/Pink = สี accent ที่เปลี่ยนสดได้)
 --==================================================================
 local Presets = {
-    Crystal = {
-        Bg = Color3.fromRGB(12, 20, 32), Sidebar = Color3.fromRGB(16, 27, 43), Card = Color3.fromRGB(22, 36, 56),
-        CardHover = Color3.fromRGB(32, 52, 78), InputBg = Color3.fromRGB(15, 25, 40),
-        Purple = Color3.fromRGB(125, 211, 252), Pink = Color3.fromRGB(196, 181, 253),
-        Text = Color3.fromRGB(236, 246, 255), Muted = Color3.fromRGB(136, 160, 186), Stroke = Color3.fromRGB(44, 70, 100),
+    Purple = {
+        Bg = Color3.fromRGB(19, 11, 33), Sidebar = Color3.fromRGB(26, 15, 45), Card = Color3.fromRGB(36, 22, 62),
+        CardHover = Color3.fromRGB(52, 32, 88), InputBg = Color3.fromRGB(24, 14, 42),
+        Purple = Color3.fromRGB(168, 85, 247), Pink = Color3.fromRGB(236, 72, 153),
+        Text = Color3.fromRGB(245, 238, 255), Muted = Color3.fromRGB(162, 140, 196), Stroke = Color3.fromRGB(64, 42, 102),
     },
     Dark = {
         Bg = Color3.fromRGB(15, 15, 17), Sidebar = Color3.fromRGB(21, 21, 24), Card = Color3.fromRGB(28, 28, 32),
@@ -33,12 +33,6 @@ local Presets = {
         Purple = Color3.fromRGB(59, 130, 246), Pink = Color3.fromRGB(34, 211, 238),
         Text = Color3.fromRGB(232, 240, 255), Muted = Color3.fromRGB(125, 145, 185), Stroke = Color3.fromRGB(36, 54, 96),
     },
-    Purple = {
-        Bg = Color3.fromRGB(19, 11, 33), Sidebar = Color3.fromRGB(26, 15, 45), Card = Color3.fromRGB(36, 22, 62),
-        CardHover = Color3.fromRGB(52, 32, 88), InputBg = Color3.fromRGB(24, 14, 42),
-        Purple = Color3.fromRGB(168, 85, 247), Pink = Color3.fromRGB(236, 72, 153),
-        Text = Color3.fromRGB(245, 238, 255), Muted = Color3.fromRGB(162, 140, 196), Stroke = Color3.fromRGB(64, 42, 102),
-    },
     Rainbow = {
         Bg = Color3.fromRGB(14, 14, 20), Sidebar = Color3.fromRGB(20, 20, 28), Card = Color3.fromRGB(27, 27, 38),
         CardHover = Color3.fromRGB(39, 39, 54), InputBg = Color3.fromRGB(19, 19, 27),
@@ -46,8 +40,8 @@ local Presets = {
         Text = Color3.fromRGB(244, 244, 250), Muted = Color3.fromRGB(150, 150, 170), Stroke = Color3.fromRGB(52, 52, 72),
     },
 }
-CrystalUI.ThemeNames = {"Crystal", "Dark", "Dark Blue", "Purple", "Rainbow"}
-CrystalUI.CurrentTheme = "Crystal" -- ค่าเริ่มต้น
+CrystalUI.ThemeNames = {"Dark", "Dark Blue", "Purple", "Rainbow"}
+CrystalUI.CurrentTheme = "Purple" -- ค่าเริ่มต้น
 
 local Theme = {Danger = Color3.fromRGB(239, 68, 68)}
 for k, v in pairs(Presets.Crystal) do Theme[k] = v end
