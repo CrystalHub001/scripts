@@ -332,8 +332,8 @@ local function MakeDraggable(handle, target, canDrag)
             if delta.Magnitude > 4 then moved = true end
             -- ไม่จำกัดขอบ: หน้าต่างตามนิ้ว/เมาส์เสมอ จึงลากไปได้ทั่วจอ (รวมทับปุ่ม Roblox ด้านบน)
             target.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+                startPos.X.Scale, startPos.X.Offset + math.round(delta.X),
+                startPos.Y.Scale, startPos.Y.Offset + math.round(delta.Y)
             )
         end
     end)
@@ -569,23 +569,41 @@ function CrystalUI:CreateWindow(opts)
     local maximized = false
     local restoreSize, restorePos
 
-    local Main = New("CanvasGroup", {
+    -- ใช้ Frame ธรรมดาแทน CanvasGroup เพราะ CanvasGroup เรนเดอร์เป็นเท็กซ์เจอร์ ทำให้ตัวหนังสือเบลอ
+    local function CenterPos(w, h)
+        local sc = ScreenSize()
+        return UDim2.fromOffset(math.floor((sc.X - w) / 2), math.floor((sc.Y - h) / 2))
+    end
+    local SidebarSolid = Theme.Bg:Lerp(Theme.Sidebar, 0.75)
+    local StripSolid = Theme.Bg:Lerp(Theme.Sidebar, 0.8)
+
+    local Main = New("Frame", {
         Name = "CrystalWindWindow",
         Size = UDim2.fromOffset(initW - 40, initH - 40),
-        Position = UDim2.new(0.5, -(initW - 40) / 2, 0.5, -(initH - 40) / 2),
+        Position = CenterPos(initW - 40, initH - 40),
         BackgroundColor3 = Theme.Bg,
         BackgroundTransparency = 0.08,
-        GroupTransparency = 1,
+        BorderSizePixel = 0,
         Active = true, -- กันคลิก/ลากทะลุหน้าต่างไปโดนเกม
     }, RootGui)
     Corner(Main, 14)
     AccentGradient(Stroke(Main, Theme.Pink, 1.2), 35)
-    Tween(Main, {Size = UDim2.fromOffset(initW, initH), Position = UDim2.new(0.5, -initW / 2, 0.5, -initH / 2), GroupTransparency = 0}, 0.3)
+    -- ฝาเฟดสำหรับเปิด/พับหน้าต่าง (แทน GroupTransparency)
+    local FadeCover = New("Frame", {
+        Name = "Fade", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Bg,
+        BackgroundTransparency = 0, BorderSizePixel = 0, ZIndex = 60,
+    }, Main)
+    Corner(FadeCover, 14)
+    Tween(Main, {Size = UDim2.fromOffset(initW, initH), Position = CenterPos(initW, initH)}, 0.3)
+    Tween(FadeCover, {BackgroundTransparency = 1}, 0.3)
+    task.delay(0.34, function() if FadeCover.Parent then FadeCover.Visible = false end end)
 
     ------------------------------------------------------------------
     -- Title strip: 🔴 ลบ UI  🟡 ปรับขนาด  🟢 พับ UI
     ------------------------------------------------------------------
-    local Strip = New("Frame", {Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Sidebar, BackgroundTransparency = 0.2, BorderSizePixel = 0, Active = true}, Main)
+    local Strip = New("Frame", {Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = StripSolid, BorderSizePixel = 0, Active = true}, Main)
+    Corner(Strip, 14)
+    New("Frame", {Size = UDim2.new(1, 0, 0, 16), Position = UDim2.fromOffset(0, 14), BackgroundColor3 = StripSolid, BorderSizePixel = 0}, Strip)
     MakeDraggable(Strip, Main, function() return not maximized end)
     New("Frame", {Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), BackgroundColor3 = Theme.Stroke, BorderSizePixel = 0}, Strip)
 
@@ -641,14 +659,15 @@ function CrystalUI:CreateWindow(opts)
         local sc = ScreenSize()
         local ap, sz = Main.AbsolutePosition, Main.AbsoluteSize
         if ap.X > sc.X - 40 or ap.X + sz.X < 40 or ap.Y > sc.Y - 30 or ap.Y + sz.Y < 40 then
-            Main.Position = UDim2.new(0.5, -sz.X / 2, 0.5, -sz.Y / 2)
+            Main.Position = CenterPos(sz.X, sz.Y)
         end
     end
 
     function Win:Hide()
         if hidden or busy or destroyed then return end
         hidden, busy = true, true
-        Tween(Main, {GroupTransparency = 1}, 0.18)
+        FadeCover.Visible = true
+        Tween(FadeCover, {BackgroundTransparency = 0}, 0.18)
         task.delay(0.18, function()
             if destroyed then return end
             Main.Visible = false
@@ -666,8 +685,13 @@ function CrystalUI:CreateWindow(opts)
         hidden, busy = false, true
         Win:Recenter()
         Main.Visible = true
-        Tween(Main, {GroupTransparency = 0}, 0.22)
-        task.delay(0.22, function() busy = false end)
+        FadeCover.BackgroundTransparency = 0
+        FadeCover.Visible = true
+        Tween(FadeCover, {BackgroundTransparency = 1}, 0.22)
+        task.delay(0.22, function()
+            if FadeCover.Parent then FadeCover.Visible = false end
+            busy = false
+        end)
     end
 
     function Win:Toggle() if hidden then Win:Show() else Win:Hide() end end
@@ -714,14 +738,24 @@ function CrystalUI:CreateWindow(opts)
     local resizing, resizeStart, startSize = false, nil, nil
     local releaseResizeSink
     -- มุมจับปรับขนาดแบบเส้นโค้ง (ควอเตอร์วงกลมที่ซ้อนกับมุมโค้งของหน้าต่าง)
+    -- วางอยู่นอกหน้าต่าง โค้งเป็นวงเดียวกับมุมโค้งของ Main (รัศมี 14) ห่างออกมา 5px
+    local CORNER_R, GAP, THICK = 14, 5, 3
+    local ArcR = CORNER_R + GAP
     local ResizeGrip = New("TextButton", {
-        Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -34, 1, -34), BackgroundTransparency = 1,
+        Size = UDim2.fromOffset(ArcR + THICK + 8, ArcR + THICK + 8),
+        Position = UDim2.new(1, -CORNER_R, 1, -CORNER_R), BackgroundTransparency = 1,
         Text = "", AutoButtonColor = false, ZIndex = 20,
     }, Main)
-    local arcClip = New("Frame", {Size = UDim2.fromOffset(10, 10), Position = UDim2.fromOffset(20, 20), BackgroundTransparency = 1, ClipsDescendants = true, ZIndex = 21}, ResizeGrip)
-    local arcCircle = New("Frame", {Size = UDim2.fromOffset(20, 20), Position = UDim2.fromOffset(-10, -10), BackgroundTransparency = 1, ZIndex = 21}, arcClip)
-    Corner(arcCircle, 10)
-    local arcStroke = Stroke(arcCircle, Theme.Muted, 2.2, 0.15)
+    local arcClip = New("Frame", {
+        Size = UDim2.fromOffset(ArcR + THICK + 2, ArcR + THICK + 2), BackgroundTransparency = 1,
+        ClipsDescendants = true, ZIndex = 21,
+    }, ResizeGrip)
+    local arcCircle = New("Frame", {
+        Size = UDim2.fromOffset(ArcR * 2, ArcR * 2), Position = UDim2.fromOffset(-ArcR, -ArcR),
+        BackgroundTransparency = 1, ZIndex = 21,
+    }, arcClip)
+    Corner(arcCircle, ArcR)
+    local arcStroke = Stroke(arcCircle, Theme.Muted, THICK, 0.15)
     ResizeGrip.MouseEnter:Connect(function() Tween(arcStroke, {Color = Theme.Purple, Transparency = 0}, 0.15) end)
     ResizeGrip.MouseLeave:Connect(function() if not resizing then Tween(arcStroke, {Color = Theme.Muted, Transparency = 0.15}, 0.15) end end)
     ResizeGrip.InputBegan:Connect(function(input)
@@ -763,7 +797,7 @@ function CrystalUI:CreateWindow(opts)
         if maximized then return end
         local mw, mh = Limits()
         local nw, nh = math.clamp(w, minW, mw), math.clamp(h, minH, mh)
-        Tween(Main, {Size = UDim2.fromOffset(nw, nh), Position = UDim2.new(0.5, -nw / 2, 0.5, -nh / 2)}, 0.26)
+        Tween(Main, {Size = UDim2.fromOffset(nw, nh), Position = CenterPos(nw, nh)}, 0.26)
     end
 
     ------------------------------------------------------------------
@@ -772,8 +806,11 @@ function CrystalUI:CreateWindow(opts)
     local SidebarWidth = opts.SidebarWidth or 168
     local Sidebar = New("Frame", {
         Size = UDim2.new(0, SidebarWidth, 1, -30), Position = UDim2.fromOffset(0, 30),
-        BackgroundColor3 = Theme.Sidebar, BackgroundTransparency = 0.25, BorderSizePixel = 0, Active = true,
+        BackgroundColor3 = SidebarSolid, BorderSizePixel = 0, Active = true,
     }, Main)
+    Corner(Sidebar, 14)
+    New("Frame", {Size = UDim2.new(1, 0, 0, 20), BackgroundColor3 = SidebarSolid, BorderSizePixel = 0}, Sidebar)
+    New("Frame", {Size = UDim2.new(0, 20, 1, 0), Position = UDim2.new(1, -20, 0, 0), BackgroundColor3 = SidebarSolid, BorderSizePixel = 0}, Sidebar)
     New("Frame", {Size = UDim2.new(0, 1, 1, -30), Position = UDim2.fromOffset(SidebarWidth, 30), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = 0.3, BorderSizePixel = 0}, Main)
 
     local Header = New("Frame", {Size = UDim2.new(1, 0, 0, 54), BackgroundTransparency = 1, Active = true}, Sidebar)
@@ -820,11 +857,7 @@ function CrystalUI:CreateWindow(opts)
     -- เลย์เอาต์ 2 คอลัมน์ → 1 คอลัมน์อัตโนมัติเมื่อหน้าต่างแคบ
     local function Relayout()
         local narrow = Container.AbsoluteSize.X < 440
-        for _, t in ipairs(Tabs) do
-            t.ColsLayout.FillDirection = narrow and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
-            local sz = narrow and UDim2.new(1, 0, 0, 0) or UDim2.new(0.5, -4, 0, 0)
-            t.Left.Size, t.Right.Size = sz, sz
-        end
+        for _, t in ipairs(Tabs) do t.SetNarrow(narrow) end
     end
     Container:GetPropertyChangedSignal("AbsoluteSize"):Connect(Relayout)
 
@@ -856,27 +889,63 @@ function CrystalUI:CreateWindow(opts)
             Text = name, Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = Theme.Muted, TextTruncate = Enum.TextTruncate.AtEnd,
         }, TabBtn)
 
-        local PageGroup = New("CanvasGroup", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, GroupTransparency = 1, Visible = false}, Container)
-        local Page = New("ScrollingFrame", {
-            Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
-            AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
-        }, PageGroup)
-        Accent(Page, "ScrollBarImageColor3", "Purple")
-        local Holder = New("Frame", {Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1}, Page)
-        New("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center}, Holder)
-        New("Frame", {Size = UDim2.new(1, 0, 0, 10), BackgroundTransparency = 1, LayoutOrder = 1}, Holder)
-        local Cols = New("Frame", {Size = UDim2.new(1, -22, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 2}, Holder)
-        New("Frame", {Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, LayoutOrder = 3}, Holder)
-        local ColsLayout = New("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, Cols)
-        local function Column(order)
-            local c = New("Frame", {Size = UDim2.new(0.5, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = order}, Cols)
+        local PageGroup = New("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false}, Container)
+
+        local function MakeScroll(props, parent)
+            local sf = New("ScrollingFrame", {
+                BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
+                AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
+                ScrollingDirection = Enum.ScrollingDirection.Y,
+            }, parent)
+            for k, v in pairs(props) do sf[k] = v end
+            Accent(sf, "ScrollBarImageColor3", "Purple")
+            return sf
+        end
+
+        -- จอกว้าง: 2 คอลัมน์ แต่ละคอลัมน์เลื่อนแยกกัน
+        local Cols = New("Frame", {Size = UDim2.new(1, -22, 1, 0), Position = UDim2.fromOffset(11, 0), BackgroundTransparency = 1}, PageGroup)
+        New("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, Cols)
+        local ScrollL = MakeScroll({Size = UDim2.new(0.5, -4, 1, 0), LayoutOrder = 1}, Cols)
+        local ScrollR = MakeScroll({Size = UDim2.new(0.5, -4, 1, 0), LayoutOrder = 2}, Cols)
+
+        -- จอแคบ: คอลัมน์เดียว เลื่อนรวมกัน
+        local PageScroll = MakeScroll({Size = UDim2.fromScale(1, 1), Visible = false}, PageGroup)
+        local Stack = New("Frame", {Size = UDim2.new(1, -22, 0, 0), Position = UDim2.fromOffset(11, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1}, PageScroll)
+        New("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, Stack)
+        New("UIPadding", {PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 14)}, Stack)
+
+        local Scrolls = {ScrollL, ScrollR, PageScroll}
+        -- ให้ Page.ScrollingEnabled = ... (ใช้ใน Slider/ColorPicker) ควบคุมทุก ScrollingFrame ของแท็บนี้
+        local Page = setmetatable({}, {__newindex = function(_, k, v)
+            if k == "ScrollingEnabled" then
+                for _, sf in ipairs(Scrolls) do sf.ScrollingEnabled = v end
+            end
+        end})
+
+        local function Column(order, parent)
+            local c = New("Frame", {Size = UDim2.new(1, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = order}, parent)
             New("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, c)
+            New("UIPadding", {PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 14)}, c)
             AutoOrder(c)
             return c
         end
-        local Left, Right = Column(1), Column(2)
+        local Left, Right = Column(1, ScrollL), Column(2, ScrollR)
 
-        local entry = {Btn = TabBtn, Page = PageGroup, Selected = false, ColsLayout = ColsLayout, Left = Left, Right = Right}
+        local entry = {Btn = TabBtn, Page = PageGroup, Selected = false, Left = Left, Right = Right}
+        local isNarrow = nil
+        function entry.SetNarrow(narrow)
+            if narrow == isNarrow then return end
+            isNarrow = narrow
+            Cols.Visible = not narrow
+            PageScroll.Visible = narrow
+            if narrow then
+                Left.Size, Right.Size = UDim2.new(1, 0, 0, 0), UDim2.new(1, 0, 0, 0)
+                Left.Parent, Right.Parent = Stack, Stack
+            else
+                Left.Size, Right.Size = UDim2.new(1, -6, 0, 0), UDim2.new(1, -6, 0, 0)
+                Left.Parent, Right.Parent = ScrollL, ScrollR
+            end
+        end
         local function Paint(anim)
             local sel = entry.Selected
             local tc = sel and Theme.Purple or Theme.Muted
@@ -913,9 +982,8 @@ function CrystalUI:CreateWindow(opts)
             end
             entry.Selected = true
             PageGroup.Position = UDim2.fromOffset(0, 16)
-            PageGroup.GroupTransparency = 1
             PageGroup.Visible = true
-            Tween(PageGroup, {Position = UDim2.new(), GroupTransparency = 0}, 0.32, Enum.EasingStyle.Quint)
+            Tween(PageGroup, {Position = UDim2.new()}, 0.32, Enum.EasingStyle.Quint)
             Paint(true)
         end
         function Tab:Select() Select() end
