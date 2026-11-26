@@ -104,27 +104,26 @@ getgenv().dodgeChar = player.CharacterAdded:Connect(function()
 	lastPerfect = nil
 end)
 
-local Win = CrystalUI:CreateWindow({
+local Window = CrystalUI:CreateWindow({
 	Title = "Crystal Hub",
-	SubTitle = "v4",
+	Author = "By CrystalHub",
 	Icon = "129839496275500",
-	ToggleIcon = 129839496275500,
-	Tag = "V1",
+	Tag = "Premium",
+	Folder = "CrystalHub",
 	Size = UDim2.fromOffset(540, 320),
+	Theme = "Purple",
 	Columns = 2,
-	ConfigFolder = "CrystalHub",
 })
 
-Win:CreateCategory("Main")
-local Tab = Win:CreateTab("Combat", "swords")
+Window:Category("Main")
+local Tab = Window:Tab({ Title = "Combat", Icon = "swords" })
 
-Tab:CreateSection("Auto Dodge", "Left")
+Tab:Section({ Title = "Auto Dodge", Side = "Left" })
 
-Tab:CreateToggle({
-	Name = "Auto Dodge",
+Tab:Toggle({
+	Title = "Auto Dodge",
 	Desc = "Automatically triggers ForceDash on Perfect window",
 	Flag = "AutoDodgeEnabled",
-	Default = Config.AutoDodgeEnabled,
 	Callback = function(v)
 		Config.AutoDodgeEnabled = v
 		if not v then
@@ -133,31 +132,29 @@ Tab:CreateToggle({
 	end,
 })
 
-Tab:CreateToggle({
-	Name = "Ignore Feints",
+Tab:Toggle({
+	Title = "Ignore Feints",
 	Desc = "Skip dodging when opponent is feinting",
 	Flag = "IgnoreFeints",
-	Default = Config.IgnoreFeints,
 	Callback = function(v)
 		Config.IgnoreFeints = v
 	end,
 })
 
-Tab:CreateSection("Settings", "Right")
+Tab:Section({ Title = "Settings", Side = "Right" })
 
-Tab:CreateSlider({
-	Name = "Max Range",
-	Min = 5,
-	Max = 30,
-	Default = Config.MaxRange,
+Tab:Slider({
+	Title = "Max Range",
+	Value = { Min = 5, Max = 30, Default = Config.MaxRange },
 	Flag = "DodgeMaxRange",
 	Callback = function(v)
 		Config.MaxRange = v
 	end,
 })
 
-Win:CreateCategory("Misc")
-Win:AddSettingsTab("Settings")
+Window:Category("Misc")
+Window:AddSettingsTab("Settings")
+Window:SelectTab(1)
 
 CrystalUI:Notify({
 	Title = "Crystal Hub",
